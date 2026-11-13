@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package ai_monitoring;
+
+message InferenceResult {
+
+    string camera_id = 1;
+    string frame_id = 2;
+    string model_id = 3;
+    int64 processed_at_ms = 4;
+    string status = 5;
+
+    bool is_event = 6;
+    string event_type = 7;
+
+    string storage_key = 8;
+    string image_format = 9;
+    int64 image_size_bytes = 10;
+    string image_sha256 = 11;
+
+    int64 captured_at_ms = 12;
+}
