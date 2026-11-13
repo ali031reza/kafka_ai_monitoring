@@ -92,19 +92,19 @@ Use separate PowerShell terminals, all from the repository root and all using th
 
 ### Terminal 1 — Results processor
 
-    python -m src.run_results_processor 2>&1 | Tee-Object -FilePath .\artifacts\load_test\results_processor.log
+    python -u -m src.run_results_processor 2>&1 | Tee-Object -FilePath .\artifacts\load_test\results_processor.log
 
 Start exactly one instance.
 
 ### Terminal 2 — AI worker pool
 
-    python -m src.run_worker_pool 2>&1 | Tee-Object -FilePath .\artifacts\load_test\worker_pool.log
+    python -u -m src.run_worker_pool 2>&1 | Tee-Object -FilePath .\artifacts\load_test\worker_pool.log
 
 The pool reads the replica counts from `config/config.yaml`. Confirm that it reports 4 car, 6 fire, 10 person_face and 9 ppe processes (29 total). Wait until the workers have started and joined their consumer groups before starting the simulator.
 
 ### Terminal 3 — Forty continuous camera simulators
 
-    python -m src.run_multi_camera_simulator --count 40 --fps 8 2>&1 | Tee-Object -FilePath .\artifacts\load_test\camera_simulator.log
+    python -u -m src.run_multi_camera_simulator --count 40 --fps 8 2>&1 | Tee-Object -FilePath .\artifacts\load_test\camera_simulator.log
 
 Do not pass `--max-frames`: without that limit, the simulator loops the MP4 until Ctrl+C. Confirm that 40 camera threads start and that the simulator reports an 8 FPS target per camera (320 unique source frames/s). If the source video caps the output below 8 FPS, stop and do not classify that run as the 8 FPS benchmark. Each camera's final summary also records its published-frame count, queued Kafka message count, actual run duration and measured FPS. The report uses the median per-camera run duration to calculate offered FPS.
 
@@ -112,7 +112,7 @@ Do not pass `--max-frames`: without that limit, the simulator loops the MP4 unti
 
 Start after all 40 camera threads are running:
 
-    python -m src.load_test.kafka_lag --interval 5 --duration 600 --output .\artifacts\load_test\kafka_lag.csv
+    python -u -m src.load_test.kafka_lag --interval 5 --duration 600 --output .\artifacts\load_test\kafka_lag.csv
 
 This samples all four frame consumer groups and the shared results processor group.
 
@@ -120,7 +120,7 @@ This samples all four frame consumer groups and the shared results processor gro
 
 Start at approximately the same time as Terminal 4:
 
-    python -m src.load_test.resource_monitor --interval 1 --duration 600 --output .\artifacts\load_test\resources.csv --docker-stats
+    python -u -m src.load_test.resource_monitor --interval 1 --duration 600 --output .\artifacts\load_test\resources.csv --docker-stats
 
 The monitor measures whole-system utilization and the worker-pool, results-processor and camera-simulator process trees. With `--docker-stats`, it also samples running Docker containers (including Kafka and PostgreSQL) every five seconds into `docker_resources.csv`. Process-tree CPU is reported as a one-logical-CPU percentage and can exceed 100% when several cores are busy. Process-tree RSS is the sum of per-process resident memory and can count shared pages more than once; use host RAM and Docker container memory alongside it.
 
