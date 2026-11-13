@@ -177,6 +177,30 @@ def _parse_camera_log(path, config):
             if topic in topic_to_model
         ]
 
+    camera_marker = "[LOAD_TEST_CAMERA_METRICS] "
+    for line in text.splitlines():
+        marker_position = line.find(camera_marker)
+        if marker_position < 0:
+            continue
+        try:
+            item = json.loads(
+                line[marker_position + len(camera_marker):].strip()
+            )
+        except (ValueError, TypeError):
+            continue
+        camera_id = item.get("camera_id")
+        if not camera_id:
+            continue
+        try:
+            result["camera_summaries"][str(camera_id)] = {
+                "published_frames": int(item["published_frames"]),
+                "queued_messages": int(item["queued_messages"]),
+                "elapsed_seconds": float(item["elapsed_seconds"]),
+                "actual_fps": float(item["actual_fps"]),
+            }
+        except (KeyError, TypeError, ValueError):
+            continue
+
     summary_pattern = re.compile(
         r"CAMERA\s+([A-Za-z0-9_-]+)\s+SUMMARY.*?"
         r"Published frames:\s*(\d+).*?"
