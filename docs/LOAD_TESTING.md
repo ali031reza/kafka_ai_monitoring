@@ -116,9 +116,9 @@ This samples all four frame consumer groups and the shared results processor gro
 
 Start at approximately the same time as Terminal 4:
 
-    python -m src.load_test.resource_monitor --interval 1 --duration 600 --output .\artifacts\load_test\resources.csv
+    python -m src.load_test.resource_monitor --interval 1 --duration 600 --output .\artifacts\load_test\resources.csv --docker-stats
 
-The monitor measures whole-system utilization and the worker-pool/results-processor process trees.
+The monitor measures whole-system utilization and the worker-pool, results-processor and camera-simulator process trees. With `--docker-stats`, it also samples running Docker containers (including Kafka and PostgreSQL) every five seconds into `docker_resources.csv`. Process-tree CPU is reported as a one-logical-CPU percentage and can exceed 100% when several cores are busy.
 
 ### End the live run
 
@@ -133,9 +133,17 @@ The monitor measures whole-system utilization and the worker-pool/results-proces
 6. Generate the report:
 
        python -m src.load_test.summarize
-       Get-Content .\artifacts\load_test\LOAD_TEST_REPORT.md
+       Get-Content -Encoding UTF8 .\artifacts\load_test\LOAD_TEST_REPORT.md
 
-The summarizer reads `worker_pool.log`, `results_processor.log`, `kafka_lag.csv`, `resources.csv` and (if present) `postgres_benchmark.json`. The post-stop lag sample is a separate drain check and is not automatically merged into the standard report.
+Inspect normalized structured outputs as needed:
+
+    Get-Content -Encoding UTF8 .\artifacts\load_test\worker_metrics.jsonl
+    Get-Content -Encoding UTF8 .\artifacts\load_test\results_processor_metrics.jsonl
+    Get-Content -Encoding UTF8 .\artifacts\load_test\camera_summary.json
+    Get-Content -Encoding UTF8 .\artifacts\load_test\kafka_lag_summary.json
+    Get-Content -Encoding UTF8 .\artifacts\load_test\resource_summary.json
+
+The summarizer reads `worker_pool.log`, `results_processor.log`, `camera_simulator.log`, `kafka_lag.csv`, `resources.csv`, optional `docker_resources.csv`, and (if present) `postgres_benchmark.json`. It auto-detects UTF-8 and Windows PowerShell UTF-16 logs. It exports normalized UTF-8 `worker_metrics.jsonl` and `results_processor_metrics.jsonl`, plus `camera_summary.json`, `kafka_lag_summary.json`, `resource_summary.json`, and `docker_resource_summary.json`. The post-stop lag sample is a separate drain check and is not automatically merged into the standard report.
 
 ## 5. PostgreSQL metadata benchmark
 
@@ -181,7 +189,7 @@ Treat the following as the Phase H planning targets, not pre-certified performan
 - **Failures and freshness:** review failed counts, dead-letter deliveries and stale-frame skips. A high stale-skip count means the system is not processing the offered stream in time even if lag remains bounded.
 - **Resources:** review system CPU/RAM and worker-pool CPU/RAM. As a conservative test safety guardrail, stop and investigate if system RAM remains above 95%, the host becomes unresponsive, or workers/broker/database repeatedly fail. This is a safety guardrail, not a formal production SLO.
 
-The current report contains aggregate worker FPS and stage averages. It does not currently calculate end-to-end latency percentiles or JPEG payload-size percentiles; do not claim those metrics were measured unless separate instrumentation is added.
+The worker instrumentation reports bounded-sample P95 values for JPEG decode, inference, event-image save, result publish and total message handling. The report shows the worst per-worker P95 for each stage; it is not a pooled percentile across all workers. The results processor currently reports average database transaction and offset-commit latency, not per-transaction P95. JPEG payload-size percentiles and camera-to-database end-to-end latency are not measured by this test.
 
 ## 8. What this benchmark does not change
 
