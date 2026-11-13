@@ -86,6 +86,7 @@ def main():
     event_count = 0
     completed = 0
     started = time.perf_counter()
+    measurement_elapsed = None
     cleanup_completed = False
 
     print(
@@ -165,6 +166,9 @@ def main():
                     f"[POSTGRES PROGRESS] rows={completed}, "
                     f"rate={completed / elapsed:.1f} rows/s"
                 )
+
+        # Stop the measured interval before cleanup deletes benchmark rows.
+        measurement_elapsed = time.perf_counter() - started
     finally:
         if args.commit:
             # Remove only rows created by this invocation. Inference rows
@@ -204,7 +208,12 @@ def main():
                     "after reviewing the run tag."
                 )
 
-    elapsed = max(time.perf_counter() - started, 1e-9)
+    elapsed = max(
+        measurement_elapsed
+        if measurement_elapsed is not None
+        else time.perf_counter() - started,
+        1e-9,
+    )
     result = {
         "run_tag": run_tag,
         "mode": "commit_and_cleanup" if args.commit else "rollback",
