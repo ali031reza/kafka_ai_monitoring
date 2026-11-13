@@ -386,13 +386,13 @@ def main():
     # file to serve as the source for report regeneration.
     worker_jsonl = output_dir / "worker_metrics.jsonl"
     results_jsonl = output_dir / "results_processor_metrics.jsonl"
-    if not worker_records and worker_jsonl.exists():
+    if not worker_records and not worker_log.exists() and worker_jsonl.exists():
         worker_records = [
             json.loads(line)
             for line in _read_text_auto(worker_jsonl).splitlines()
             if line.strip()
         ]
-    if not results_records and results_jsonl.exists():
+    if not results_records and not results_log.exists() and results_jsonl.exists():
         results_records = [
             json.loads(line)
             for line in _read_text_auto(results_jsonl).splitlines()
@@ -732,6 +732,30 @@ def main():
     if results and _safe_int(results.get("failed")):
         warnings.append(
             f"Results processor reported {_safe_int(results.get('failed'))} failed messages."
+        )
+    if not worker_records:
+        warnings.append("No worker metric snapshots were found in worker_pool.log.")
+    if not results_records:
+        warnings.append("No results-processor metric snapshots were found in results_processor.log.")
+    if not lag_rows:
+        warnings.append("No Kafka lag samples were found.")
+    if not resource_rows:
+        warnings.append("No resource-monitor samples were found.")
+    if not camera_summaries:
+        warnings.append("No per-camera final summaries were parsed; actual camera FPS cannot be verified.")
+    for model in MODELS:
+        offered = model_offered_fps.get(model)
+        items = worker_groups.get(model, [])
+        if offered and items:
+            processed = sum(_safe_int(item.get("processed")) for item in items)
+            measured = processed / worker_window if worker_window else 0.0
+            if measured < offered:
+                warnings.append(
+                    f"{model} worker processed rate ({measured:.2f} FPS) was below measured offered rate ({offered:.2f} FPS)."
+                )
+    if camera.get("source_fps_warnings"):
+        warnings.append(
+            "At least one camera source video had a native FPS below the requested output FPS."
         )
 
     lines.extend([
