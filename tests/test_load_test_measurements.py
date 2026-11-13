@@ -113,6 +113,28 @@ Actual camera FPS: 8.000
         self.assertEqual(result["camera_summaries"]["C01"]["elapsed_seconds"], 600.0)
         self.assertEqual(result["camera_summaries"]["C01"]["actual_fps"], 8.0)
 
+    def test_camera_log_parses_structured_metrics_marker(self):
+        from src.load_test.summarize import _parse_camera_log
+
+        sample = (
+            "Selected cameras: 1\n"
+            "  C01: ('model_1.frames',)\n"
+            '[LOAD_TEST_CAMERA_METRICS] '
+            '{"camera_id":"C01","published_frames":800,'
+            '"queued_messages":800,"elapsed_seconds":100.0,'
+            '"actual_fps":8.0,"final_sequence":800}\n'
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "camera.log"
+            path.write_text(sample, encoding="utf-8")
+            result = _parse_camera_log(
+                path,
+                {"kafka": {"topics": {"car": {"frames": "model_1.frames"}}}},
+            )
+
+        self.assertEqual(result["camera_summaries"]["C01"]["published_frames"], 800)
+        self.assertEqual(result["camera_summaries"]["C01"]["actual_fps"], 8.0)
+
     def test_offered_fps_requires_every_camera_summary(self):
         summaries = {
             "C01": {"published_frames": 4800},
