@@ -106,7 +106,7 @@ The pool reads the replica counts from `config/config.yaml`. Confirm that it rep
 
     python -m src.run_multi_camera_simulator --count 40 --fps 8 2>&1 | Tee-Object -FilePath .\artifacts\load_test\camera_simulator.log
 
-Do not pass `--max-frames`: without that limit, the simulator loops the MP4 until Ctrl+C. Confirm that 40 camera threads start and that the simulator reports an 8 FPS target per camera (320 unique source frames/s). If the source video caps the output below 8 FPS, stop and do not classify that run as the 8 FPS benchmark.
+Do not pass `--max-frames`: without that limit, the simulator loops the MP4 until Ctrl+C. Confirm that 40 camera threads start and that the simulator reports an 8 FPS target per camera (320 unique source frames/s). If the source video caps the output below 8 FPS, stop and do not classify that run as the 8 FPS benchmark. Each camera's final summary also records its published-frame count, queued Kafka message count, actual run duration and measured FPS. The report uses the median per-camera run duration to calculate offered FPS.
 
 ### Terminal 4 — Kafka lag sampling (10 minutes)
 
@@ -122,7 +122,7 @@ Start at approximately the same time as Terminal 4:
 
     python -m src.load_test.resource_monitor --interval 1 --duration 600 --output .\artifacts\load_test\resources.csv --docker-stats
 
-The monitor measures whole-system utilization and the worker-pool, results-processor and camera-simulator process trees. With `--docker-stats`, it also samples running Docker containers (including Kafka and PostgreSQL) every five seconds into `docker_resources.csv`. Process-tree CPU is reported as a one-logical-CPU percentage and can exceed 100% when several cores are busy.
+The monitor measures whole-system utilization and the worker-pool, results-processor and camera-simulator process trees. With `--docker-stats`, it also samples running Docker containers (including Kafka and PostgreSQL) every five seconds into `docker_resources.csv`. Process-tree CPU is reported as a one-logical-CPU percentage and can exceed 100% when several cores are busy. Process-tree RSS is the sum of per-process resident memory and can count shared pages more than once; use host RAM and Docker container memory alongside it.
 
 ### End the live run
 
@@ -193,7 +193,7 @@ Treat the following as the Phase H planning targets, not pre-certified performan
 - **Failures and freshness:** review failed counts, dead-letter deliveries and stale-frame skips. A high stale-skip count means the system is not processing the offered stream in time even if lag remains bounded.
 - **Resources:** review system CPU/RAM and worker-pool CPU/RAM. As a conservative test safety guardrail, stop and investigate if system RAM remains above 95%, the host becomes unresponsive, or workers/broker/database repeatedly fail. This is a safety guardrail, not a formal production SLO.
 
-The worker instrumentation reports bounded-sample P95 values for JPEG decode, inference, event-image save, result publish and total message handling. The report shows the worst per-worker P95 for each stage; it is not a pooled percentile across all workers. The results processor currently reports average database transaction and offset-commit latency, not per-transaction P95. JPEG payload-size percentiles and camera-to-database end-to-end latency are not measured by this test.
+The worker instrumentation reports bounded-sample P95 values (the most recent 4,096 samples per worker and stage) for JPEG decode, inference, event-image save, result publish and total message handling. The report shows the worst per-worker P95 for each stage; it is not a pooled percentile across all workers. The results processor currently reports average database transaction and offset-commit latency, not per-transaction P95. JPEG payload-size percentiles and camera-to-database end-to-end latency are not measured by this test.
 
 ## 8. What this benchmark does not change
 
