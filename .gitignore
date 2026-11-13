@@ -1,6 +1,4 @@
-# ==========================================
-# PYTHON
-# ==========================================
+# Python
 .venv/
 venv/
 __pycache__/
@@ -9,49 +7,24 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 
-# ==========================================
-# ENVIRONMENT VARIABLES / SECRETS
-# ==========================================
+# Environment variables and secrets
 .env
 .env.*
 !.env.example
 !**/.env.example
 
-# ==========================================
-# GENERATED EVENT IMAGES
-# ==========================================
+# Generated event images and local database data
 data/event_images/
-
-# ==========================================
-# DATABASE DATA
-# ==========================================
 infra/postgres/data/
 infra/postgres/pgdata/
 
-# ==========================================
-# LOGS
-# ==========================================
-*.log
-
-# ==========================================
-# IDE
-# ==========================================
-.vscode/
-.idea/
-
-# ==========================================
-# OS
-# ==========================================
-.DS_Store
-Thumbs.db
-# Generated event images
-data/event_images/
-
-# Local camera video samples
+# Local camera sample videos and runtime files
 Camera_sample/*.mp4
-
-# Local installation backups
+*.log
 backup_phase_A_to_E_*/
 
-# Runtime logs
-*.log
+# IDE and operating system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

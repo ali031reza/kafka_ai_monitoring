@@ -8,21 +8,39 @@ from src.kafka.result_producer import KafkaResultProducer
 from src.ingestion.frame_serializer import FrameSerializer
 
 from src.workers.ai_worker import AIWorker
-from src.workers.dummy_model import DummyAIModel
+from src.workers.base_model import BaseAIModel
+from src.workers.car import CarDetectionModel
+from src.workers.fire import FireDetectionModel
+from src.workers.person_face import PersonFaceDetectionModel
+from src.workers.ppe import PPEDetectionModel
 from src.workers.freshness_policy import FrameFreshnessPolicy
 from src.workers.dead_letter_publisher import DeadLetterPublisher
 
 from src.storage.event_image_storage import EventImageStorage
 
 
+MODEL_CLASSES: dict[str, type[BaseAIModel]] = {
+    "car": CarDetectionModel,
+    "fire": FireDetectionModel,
+    "person_face": PersonFaceDetectionModel,
+    "ppe": PPEDetectionModel,
+}
+
+
 class WorkerApplication:
-    """Initializes one independent worker instance."""
+    """Initializes one independent worker instance for a selected model."""
 
     def __init__(
         self,
         model_name: str,
         worker_instance_id: str | None = None,
     ):
+        if model_name not in MODEL_CLASSES:
+            raise ValueError(
+                f"Unsupported model '{model_name}'. "
+                f"Choose from: {', '.join(MODEL_CLASSES)}"
+            )
+
         self._model_name = model_name
         root = Path(__file__).resolve().parents[1]
         config = ConfigManager(root)
@@ -62,9 +80,11 @@ class WorkerApplication:
             root_dir=root / storage_config["root_dir"]
         )
 
-        model = DummyAIModel(
-            model_id=model_name,
-            inference_delay_ms=model_config.get("inference_delay_ms", 30),
+        model_class = MODEL_CLASSES[model_name]
+        model = model_class(
+            inference_delay_ms=model_config.get(
+                "inference_delay_ms", 30
+            ),
             detection_probability=model_config.get(
                 "detection_probability", 0.50
             ),
@@ -88,6 +108,7 @@ class WorkerApplication:
 
         print(
             f"[WORKER CONFIGURED] model={model_name}, "
+            f"model_class={model_class.__name__}, "
             f"client_id={client_id}, group_id={group_id}"
         )
 
@@ -109,14 +130,16 @@ class WorkerCLI:
         self._parser.add_argument(
             "--model",
             required=True,
-            choices=["car", "fire", "person_face", "ppe"],
+            choices=list(MODEL_CLASSES),
         )
         self._parser.add_argument(
-            "--once", action="store_true",
+            "--once",
+            action="store_true",
             help="Process one message and exit",
         )
         self._parser.add_argument(
-            "--worker-id", default="manual",
+            "--worker-id",
+            default="manual",
             help="Unique client ID suffix; consumer group stays shared",
         )
 
