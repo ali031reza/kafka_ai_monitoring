@@ -78,7 +78,7 @@ Wait until all 36 workers have started and joined their consumer groups before s
 python -m src.load_test.kafka_lag --interval 5 --duration 300
 ```
 
-This samples all four model frame groups and the shared results processor group.
+This samples all four model frame groups and the shared results processor group. A partition with no committed offset is reported as unknown, not as the full retained topic depth. This matters because the results consumer uses `auto.offset.reset: latest`; its current position cannot be inferred from the low/high watermarks when no offset has been committed. The same applies when a committed offset is older than the retention low watermark.
 
 ### Terminal 4 — CPU and RAM (5 minutes)
 
@@ -138,7 +138,7 @@ The report combines worker metrics, Kafka lag samples, resource samples, results
 ## How to judge the results
 
 - Compare each model's measured aggregate processed FPS with its incoming FPS: car 84, fire 144, person/face 240 and PPE 204.
-- A stable or declining Kafka lag is required. Rising lag means the group is not keeping up with offered load.
+- A stable or declining Kafka lag is required. Rising known lag means the group is not keeping up with offered load. Partitions reported as unknown need a successful commit before their committed-offset lag can be measured; do not interpret unknown as zero or as the full retained topic depth.
 - Compare worker-pool CPU/RAM and whole-system CPU/RAM. Sustained CPU saturation or memory pressure can reduce throughput and destabilize the host.
 - Results processor throughput must keep up with the combined result stream. If it does not, result-topic lag will rise even if AI workers keep processing.
 - PostgreSQL commit-mode rows/second is a separate database-path benchmark. Compare it with the results processor's actual throughput; they are not identical because the live path also includes Kafka, Protobuf validation and image metadata handling.

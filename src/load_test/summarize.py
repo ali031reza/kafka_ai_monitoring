@@ -130,6 +130,8 @@ def main():
 
     if lag_rows:
         totals = defaultdict(int)
+        known_partition_counts = defaultdict(int)
+        unknown_partition_counts = defaultdict(int)
         for row in lag_rows:
             key = (
                 row["group_id"],
@@ -137,21 +139,43 @@ def main():
                 row["model"] if row["stream_type"] == "frames" else "all",
                 row["timestamp_utc"],
             )
-            totals[key] += int(row["lag"])
+            if row.get("lag", "") in ("", None):
+                unknown_partition_counts[key] += 1
+            else:
+                totals[key] += int(row["lag"])
+                known_partition_counts[key] += 1
 
-        maxima = defaultdict(int)
-        for (group_id, stream_type, model, timestamp), lag in totals.items():
-            key = (group_id, stream_type, model)
-            maxima[key] = max(maxima[key], lag)
+        maxima = {}
+        max_unknown = defaultdict(int)
+        for key, lag in totals.items():
+            group_key = key[:3]
+            maxima[group_key] = max(maxima.get(group_key, 0), lag)
+        for key, count in unknown_partition_counts.items():
+            group_key = key[:3]
+            max_unknown[group_key] = max(max_unknown[group_key], count)
 
+        group_keys = sorted(set(maxima) | set(max_unknown))
         lines.extend([
-            "| Consumer group | Stream | Model | Maximum sampled total lag |",
-            "|---|---|---|---:|",
+            "| Consumer group | Stream | Model | Maximum sampled known lag | Unknown partitions per sample (max) |",
+            "|---|---|---|---:|---:|",
         ])
-        for (group_id, stream_type, model), lag in sorted(maxima.items()):
-            lines.append(
-                f"| {group_id} | {stream_type} | {model} | {lag} |"
+        for group_key in group_keys:
+            group_id, stream_type, model = group_key
+            known_lag = (
+                str(maxima[group_key])
+                if group_key in maxima
+                else "Unknown"
             )
+            lines.append(
+                f"| {group_id} | {stream_type} | {model} | "
+                f"{known_lag} | {max_unknown.get(group_key, 0)} |"
+            )
+        lines.append(
+            "Known lag sums only partitions with valid committed offsets. "
+            "Partitions without a valid committed offset, or whose committed "
+            "offset is older than the low watermark, are reported as unknown "
+            "rather than being assumed to start at the earliest offset."
+        )
     else:
         lines.append("No Kafka lag CSV found.")
 
