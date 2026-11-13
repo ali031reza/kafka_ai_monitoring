@@ -73,6 +73,45 @@ class LoadTestMeasurementTests(unittest.TestCase):
         self.assertAlmostEqual(_parse_percent("98.5%"), 98.5)
         self.assertIsNone(_parse_percent("n/a"))
 
+    def test_camera_log_parses_routes_and_run_duration(self):
+        from src.load_test.summarize import _parse_camera_log
+
+        sample = """Selected cameras: 1
+Output FPS per camera: 8.0
+Aggregate target FPS: 8
+Camera routing assignments:
+  C01: ('model_1.frames', 'model_3.frames')
+
+==========================================
+CAMERA C01 SUMMARY
+==========================================
+Published frames: 4800
+Kafka messages queued: 9600
+Run elapsed seconds: 600.000
+Actual camera FPS: 8.000
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "camera.log"
+            path.write_text(sample, encoding="utf-8")
+            result = _parse_camera_log(
+                path,
+                {
+                    "kafka": {
+                        "topics": {
+                            "car": {"frames": "model_1.frames"},
+                            "person_face": {"frames": "model_3.frames"},
+                        }
+                    }
+                },
+            )
+
+        self.assertEqual(result["selected_camera_count"], 1)
+        self.assertEqual(result["camera_routes"]["C01"], ["car", "person_face"])
+        self.assertEqual(result["camera_summaries"]["C01"]["published_frames"], 4800)
+        self.assertEqual(result["camera_summaries"]["C01"]["queued_messages"], 9600)
+        self.assertEqual(result["camera_summaries"]["C01"]["elapsed_seconds"], 600.0)
+        self.assertEqual(result["camera_summaries"]["C01"]["actual_fps"], 8.0)
+
     def test_lag_summary_tracks_first_last_and_unknown(self):
         rows = [
             {
