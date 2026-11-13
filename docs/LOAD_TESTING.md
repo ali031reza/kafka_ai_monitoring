@@ -77,7 +77,7 @@ Expected worker counts: `{'car': 4, 'fire': 6, 'person_face': 10, 'ppe': 9}`. Ex
 
 Inspect the actual database assignment table before the test:
 
-    docker exec postgres-postgres-1 psql -U ai_app -d ai_monitoring -c "\\d+ public.camera_model_assignments"
+    docker exec postgres-postgres-1 psql -U ai_app -d ai_monitoring -c "\d+ public.camera_model_assignments"
     docker exec postgres-postgres-1 psql -U ai_app -d ai_monitoring -c "SELECT * FROM public.camera_model_assignments ORDER BY 1, 2;"
 
 Use the table's enabled/active fields, if present, when counting assignments. Do not use historical inference rows as a substitute for the active routing table.
