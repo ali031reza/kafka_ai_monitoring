@@ -1,6 +1,8 @@
 import json
+import math
 import os
 import time
+from collections import deque
 
 import cv2
 import numpy as np
@@ -69,6 +71,11 @@ class AIWorker:
         self._run_started_at = None
         self._first_message_at = None
         self._last_message_at = None
+        self._stage_samples = {
+            stage: deque(maxlen=4096)
+            for stage in self._TIMED_STAGES
+        }
+        self._message_samples = deque(maxlen=4096)
         self._metrics = {
             "handled": 0,
             "processed": 0,
@@ -82,10 +89,18 @@ class AIWorker:
             self._metrics[f"{stage}_count"] = 0
 
     def _record_stage(self, stage: str, started_at: float) -> None:
-        self._metrics[f"{stage}_ms_total"] += (
-            time.perf_counter() - started_at
-        ) * 1000.0
+        elapsed_ms = (time.perf_counter() - started_at) * 1000.0
+        self._metrics[f"{stage}_ms_total"] += elapsed_ms
         self._metrics[f"{stage}_count"] += 1
+        self._stage_samples[stage].append(elapsed_ms)
+
+    @staticmethod
+    def _p95_ms(samples) -> float:
+        if not samples:
+            return 0.0
+        ordered = sorted(samples)
+        index = max(0, math.ceil(0.95 * len(ordered)) - 1)
+        return round(ordered[index], 3)
 
     def _metrics_snapshot(self) -> dict:
         elapsed = max(
@@ -117,10 +132,16 @@ class AIWorker:
             "processed_fps": round(
                 self._metrics["processed"] / active_elapsed, 3
             ) if active_elapsed else 0.0,
+            "run_processed_fps": round(
+                self._metrics["processed"] / elapsed, 3
+            ),
             "total_message_avg_ms": round(
                 self._metrics["total_message_ms"]
                 / max(self._metrics["handled"], 1),
                 3,
+            ),
+            "total_message_p95_ms": self._p95_ms(
+                self._message_samples
             ),
         }
         for stage in self._TIMED_STAGES:
@@ -130,6 +151,9 @@ class AIWorker:
             snapshot[f"{stage}_avg_ms"] = round(
                 total / count if count else 0.0,
                 3,
+            )
+            snapshot[f"{stage}_p95_ms"] = self._p95_ms(
+                self._stage_samples[stage]
             )
             snapshot[f"{stage}_ms_total"] = round(total, 3)
         return snapshot
@@ -271,9 +295,9 @@ class AIWorker:
             finished_at = time.perf_counter()
             self._last_message_at = finished_at
             self._metrics["handled"] += 1
-            self._metrics["total_message_ms"] += (
-                finished_at - started_at
-            ) * 1000.0
+            message_elapsed_ms = (finished_at - started_at) * 1000.0
+            self._metrics["total_message_ms"] += message_elapsed_ms
+            self._message_samples.append(message_elapsed_ms)
 
     def _handle_message_impl(self, message) -> str:
         frame = None
