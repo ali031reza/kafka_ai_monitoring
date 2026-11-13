@@ -73,16 +73,19 @@ kafka:
       inference_delay_ms: 30
       detection_probability: 0.50
 
-# Load-test branch target replica counts: ceil(input FPS / 20 FPS).
+# Phase H load-test planning target.
+# Nominal worker target: 20 FPS; plan at 80% utilization = 16 FPS/worker.
+# Counts below use the historical routing inventory and must be checked
+# against active camera_model_assignments before final capacity sign-off.
 workers:
-  car: 5
-  fire: 8
-  person_face: 12
-  ppe: 11
+  car: 4
+  fire: 6
+  person_face: 10
+  ppe: 9
 
 cameras:
   total: 40
-  fps: 12
+  fps: 8
   resolution:
     width: 1920
     height: 1080
