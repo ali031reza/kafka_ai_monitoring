@@ -71,16 +71,21 @@ The 50% setting is a random simulation probability, not detection accuracy, prec
 
 The settings are read from `config/config.yaml` for each model. The optional environment variable `SIMULATE_DETECTION_PROBABILITY` overrides the configured probability. Remove that variable to use the configured 0.50 value. `SIMULATE_AI_FAILURE=1` enables the existing failure-injection behavior.
 
-## Current load configuration
+## Load-test branch configuration
 
-The current values in `config/config.yaml` have intentionally not been changed as part of the model-package cleanup.
+On the `load-test` branch, the worker pool is configured for the 20 FPS-per-worker planning target. The frame-topic partition counts remain at 16 per model and result-topic partitions remain at 4 per model.
 
-| Model | Assigned cameras in the seeded routing data | Configured frame partitions | Configured worker processes |
-|---|---:|---:|---:|
-| Car | 7 | 16 | 4 |
-| Fire | 12 | 16 | 7 |
-| Person/Face | 20 | 16 | 11 |
-| PPE | 17 | 16 | 9 |
+| Model | Assigned cameras in the seeded routing data | Incoming FPS | Frame partitions | Configured worker processes |
+|---|---:|---:|---:|---:|
+| Car | 7 | 84 | 16 | 5 |
+| Fire | 12 | 144 | 16 | 8 |
+| Person/Face | 20 | 240 | 16 | 12 |
+| PPE | 17 | 204 | 16 | 11 |
+| **Total** | **56 assignments** | **672** | — | **36** |
+
+The worker counts are planning values, not a performance guarantee. Actual throughput must be measured on the target machine, including JPEG decoding, event-image writes, Kafka delivery, and results persistence.
+
+See [docs/LOAD_TESTING.md](docs/LOAD_TESTING.md) for the five-test procedure and local benchmark commands.
 
 Camera assignments can overlap. At 12 FPS per camera, the documented routing inventory represents 40 distinct camera streams (480 source frames/second) and 56 camera-to-model assignments (672 model-topic frame records/second before drops or backpressure).
 
