@@ -139,10 +139,20 @@ def main():
                 row["model"] if row["stream_type"] == "frames" else "all",
                 row["timestamp_utc"],
             )
-            if row.get("lag", "") in ("", None):
+            lag_value = row.get("lag", "")
+            committed_value = row.get("committed_offset", "")
+            low_value = row.get("low_offset", "0")
+            has_valid_commit = (
+                committed_value not in ("", None)
+                and int(committed_value) >= int(low_value)
+            )
+            if lag_value in ("", None) or not has_valid_commit:
+                # Also recognize older CSV files from the previous monitor,
+                # which incorrectly assigned full retained depth to
+                # partitions whose committed offset was -1001.
                 unknown_partition_counts[key] += 1
             else:
-                totals[key] += int(row["lag"])
+                totals[key] += int(lag_value)
                 known_partition_counts[key] += 1
 
         maxima = {}
