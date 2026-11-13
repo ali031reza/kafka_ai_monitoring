@@ -39,6 +39,8 @@ class ResultsProcessingService:
         self._results_repository = results_repository
         self._topic_model_map = topic_model_map
         self._run_started_at = None
+        self._first_message_at = None
+        self._last_message_at = None
         self._metrics = {
             "messages": 0,
             "processed": 0,
@@ -140,6 +142,8 @@ class ResultsProcessingService:
     def _process_message(self, message) -> None:
         """Process one inference result and commit only after DB success."""
         started_at = time.perf_counter()
+        if self._first_message_at is None:
+            self._first_message_at = started_at
         try:
             result = self._deserialize(message)
             self._validate_result(
@@ -171,9 +175,11 @@ class ResultsProcessingService:
                 f"Image ID={event_image_id}"
             )
         finally:
+            finished_at = time.perf_counter()
+            self._last_message_at = finished_at
             self._metrics["messages"] += 1
             self._metrics["message_ms_total"] += (
-                time.perf_counter() - started_at
+                finished_at - started_at
             ) * 1000.0
 
     def _metrics_snapshot(self) -> dict:
@@ -181,16 +187,25 @@ class ResultsProcessingService:
             time.perf_counter() - self._run_started_at,
             1e-9,
         )
+        active_elapsed = 0.0
+        if self._first_message_at is not None:
+            active_elapsed = max(
+                (self._last_message_at or time.perf_counter())
+                - self._first_message_at,
+                self._metrics["message_ms_total"] / 1000.0,
+                1e-9,
+            )
         return {
             "pid": os.getpid(),
             "elapsed_seconds": round(elapsed, 3),
+            "active_elapsed_seconds": round(active_elapsed, 3),
             "messages": self._metrics["messages"],
             "processed": self._metrics["processed"],
             "failed": self._metrics["failed"],
             "results_fps": round(
-                self._metrics["processed"] / elapsed,
+                self._metrics["processed"] / active_elapsed,
                 3,
-            ),
+            ) if active_elapsed else 0.0,
             "message_avg_ms": round(
                 self._metrics["message_ms_total"]
                 / max(self._metrics["messages"], 1),

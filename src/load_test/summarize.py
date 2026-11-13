@@ -92,7 +92,7 @@ def main():
             continue
 
         elapsed = max(
-            (item.get("elapsed_seconds", 0.0) for item in items),
+            (item.get("active_elapsed_seconds", item.get("elapsed_seconds", 0.0)) for item in items),
             default=0.0,
         )
         processed = sum(item.get("processed", 0) for item in items)

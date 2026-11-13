@@ -67,6 +67,8 @@ class AIWorker:
         self._progress_log_every = progress_log_every
         self._decoded_frames = 0
         self._run_started_at = None
+        self._first_message_at = None
+        self._last_message_at = None
         self._metrics = {
             "handled": 0,
             "processed": 0,
@@ -90,18 +92,31 @@ class AIWorker:
             time.perf_counter() - self._run_started_at,
             1e-9,
         )
+        active_elapsed = 0.0
+        if self._first_message_at is not None:
+            active_elapsed = max(
+                (self._last_message_at or time.perf_counter())
+                - self._first_message_at,
+                self._metrics["total_message_ms"] / 1000.0,
+                1e-9,
+            )
         snapshot = {
             "model": self._model_id,
             "pid": os.getpid(),
             "elapsed_seconds": round(elapsed, 3),
+            "active_elapsed_seconds": round(active_elapsed, 3),
             "handled": self._metrics["handled"],
             "processed": self._metrics["processed"],
             "skipped": self._metrics["skipped"],
             "failed": self._metrics["failed"],
             "unhandled_errors": self._metrics["unhandled_errors"],
             "decoded_frames": self._decoded_frames,
-            "handled_fps": round(self._metrics["handled"] / elapsed, 3),
-            "processed_fps": round(self._metrics["processed"] / elapsed, 3),
+            "handled_fps": round(
+                self._metrics["handled"] / active_elapsed, 3
+            ) if active_elapsed else 0.0,
+            "processed_fps": round(
+                self._metrics["processed"] / active_elapsed, 3
+            ) if active_elapsed else 0.0,
             "total_message_avg_ms": round(
                 self._metrics["total_message_ms"]
                 / max(self._metrics["handled"], 1),
@@ -243,6 +258,8 @@ class AIWorker:
 
     def _handle_message(self, message) -> str:
         started_at = time.perf_counter()
+        if self._first_message_at is None:
+            self._first_message_at = started_at
         try:
             outcome = self._handle_message_impl(message)
             self._metrics[outcome] += 1
@@ -251,9 +268,11 @@ class AIWorker:
             self._metrics["unhandled_errors"] += 1
             raise
         finally:
+            finished_at = time.perf_counter()
+            self._last_message_at = finished_at
             self._metrics["handled"] += 1
             self._metrics["total_message_ms"] += (
-                time.perf_counter() - started_at
+                finished_at - started_at
             ) * 1000.0
 
     def _handle_message_impl(self, message) -> str:

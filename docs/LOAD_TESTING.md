@@ -8,7 +8,7 @@ The branch configures 36 AI worker processes for the current 672 frame-records/s
 
 | Model | Input rate | Worker processes | Planning rate per worker |
 |---|---:|---:|---:|
-| car | 84 FPS | 5 | 20 FPS |
+| car | 84 FPS | 5 | 16.8 FPS |
 | fire | 144 FPS | 8 | 18 FPS |
 | person_face | 240 FPS | 12 | 20 FPS |
 | ppe | 204 FPS | 11 | 18.55 FPS |
