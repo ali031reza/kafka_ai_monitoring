@@ -55,6 +55,10 @@ A partition with no committed offset is not automatically proof of a backlog. Co
 
     python -m pip install -r .\requirements-load-test.txt
 
+- Run the load-test measurement regression tests before starting the benchmark:
+
+    python -m unittest discover -s tests -v
+
 - Create the local output directory:
 
     New-Item -ItemType Directory -Force .\artifacts\load_test | Out-Null
