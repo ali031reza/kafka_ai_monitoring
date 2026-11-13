@@ -73,23 +73,25 @@ The settings are read from `config/config.yaml` for each model. The optional env
 
 ## Load-test branch configuration
 
-On the `load-test` branch, the worker pool is configured for the 20 FPS-per-worker planning target. The frame-topic partition counts remain at 16 per model and result-topic partitions remain at 4 per model.
+The `load-test` branch now carries the Phase H planning target of **8 FPS per camera** and **29 worker processes**. The 30 ms mock inference delay and 50% simulated event probability are unchanged. Input frame topics remain at 16 partitions each; results topics remain at 4 partitions each.
 
-| Model | Assigned cameras in the seeded routing data | Incoming FPS | Frame partitions | Configured worker processes |
+| Model | Historical camera assignments | Expected input at 8 FPS | Frame partitions | Configured worker processes |
 |---|---:|---:|---:|---:|
-| Car | 7 | 84 | 16 | 5 |
-| Fire | 12 | 144 | 16 | 8 |
-| Person/Face | 20 | 240 | 16 | 12 |
-| PPE | 17 | 204 | 16 | 11 |
-| **Total** | **56 assignments** | **672** | — | **36** |
+| Car | 7 | 56 FPS | 16 | 4 |
+| Fire | 12 | 96 FPS | 16 | 6 |
+| Person/Face | 20 | 160 FPS | 16 | 10 |
+| PPE | 17 | 136 FPS | 16 | 9 |
+| **Total** | **56 assignments** | **448 FPS** | — | **29** |
 
-The worker counts are planning values, not a performance guarantee. Actual throughput must be measured on the target machine, including JPEG decoding, event-image writes, Kafka delivery, and results persistence.
+The 7/12/20/17 camera counts are derived from the historical inference-result distribution used for initial planning. Verify the active rows in PostgreSQL `camera_model_assignments` before treating these rates as the authoritative offered load; recalculate the per-model plan if active assignments differ.
 
-See [docs/LOAD_TESTING.md](docs/LOAD_TESTING.md) for the five-test procedure and local benchmark commands.
+The worker plan assumes a nominal 20 FPS per worker and targets 80% utilization (16 input FPS per worker). These are planning assumptions, not measured capacity guarantees. Actual throughput must be measured on the target machine, including JPEG decoding, event-image writes, Kafka delivery and results persistence.
 
-Camera assignments can overlap. At 12 FPS per camera, the documented routing inventory represents 40 distinct camera streams (480 source frames/second) and 56 camera-to-model assignments (672 model-topic frame records/second before drops or backpressure).
+See [docs/LOAD_TESTING.md](docs/LOAD_TESTING.md) for the 10-minute Phase H benchmark procedure and local commands.
 
-**Partition and worker counts are not being declared optimal here.** They are the repository's current development values. Decide final sizing only after measuring per-model throughput, consumer lag, stale-frame skips, CPU, memory, JPEG decoding cost, event-image I/O and PostgreSQL result-ingestion capacity.
+At 8 FPS per camera, 40 cameras produce 320 distinct source frames/second. With the historical 56 camera-to-model assignments, model-specific routing produces 448 frame records/second before drops or backpressure.
+
+**Partition and worker counts are not being declared optimal here.** The 16 frame partitions and 4 result partitions per model are retained for this benchmark. Final sizing requires measured per-model throughput, per-partition lag, stale-frame skips, CPU, memory, JPEG decoding cost, event-image I/O and PostgreSQL result-ingestion capacity.
 
 ## Repository layout
 
@@ -200,13 +202,13 @@ python -m src.run_results_processor
 python -m src.run_worker_pool
 ```
 
-**Terminal 3 — 40 simulated cameras, 120 frames per camera**
+**Terminal 3 — 40 continuous simulated cameras at 8 FPS**
 
 ```powershell
-python -m src.run_multi_camera_simulator --count 40 --max-frames 120
+python -m src.run_multi_camera_simulator --count 40 --fps 8
 ```
 
-The simulator uses `Camera_sample/TEST.mp4` by default. Use `--video` to provide a different local video file.
+The simulator uses `Camera_sample/TEST.mp4` by default. It loops until Ctrl+C when `--max-frames` is omitted. Use `--video` to provide a different local video file. The source video's native FPS must be at least 8 FPS for the full target to be achieved.
 
 To run one model worker manually instead of the full pool:
 
