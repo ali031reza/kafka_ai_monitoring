@@ -454,7 +454,7 @@ def main():
 
     model_camera_ids = defaultdict(list)
     for camera_id, models in camera["camera_routes"].items():
-        for model in models:
+        for model in set(models):
             model_camera_ids[model].append(camera_id)
 
     model_offered_fps = {}
@@ -695,7 +695,14 @@ def main():
     ])
 
     postgres_path = output_dir / "postgres_benchmark.json"
-    if postgres_path.exists():
+    postgres_is_fresh = (
+        postgres_path.exists()
+        and (
+            not camera_log.exists()
+            or postgres_path.stat().st_mtime >= camera_log.stat().st_mtime
+        )
+    )
+    if postgres_is_fresh:
         try:
             postgres = json.loads(_read_text_auto(postgres_path))
             lines.extend([
@@ -709,6 +716,8 @@ def main():
             ])
         except (ValueError, OSError) as error:
             lines.append(f"Could not parse PostgreSQL benchmark JSON: {error}")
+    elif postgres_path.exists():
+        lines.append("PostgreSQL benchmark JSON is older than the current camera log and was excluded as stale.")
     else:
         lines.append("No PostgreSQL benchmark JSON found. Run the isolated PostgreSQL benchmark after the live test.")
 
