@@ -1,4 +1,5 @@
 
+import json
 import time
 import threading
 from pathlib import Path
@@ -594,42 +595,47 @@ class VideoCameraSimulator:
                 f"Camera={self._camera_id}"
             )
 
-            # Flush outstanding Kafka messages.
-            self._producer.flush(
-                timeout=30.0
-            )
+            # Emit the final measurements before flushing. A broker flush
+            # can fail or time out; that must not erase the camera's workload
+            # evidence from the load-test log.
+            summary = {
+                "camera_id": self._camera_id,
+                "published_frames": self._published_frames,
+                "queued_messages": self._queued_messages,
+                "elapsed_seconds": round(elapsed_seconds, 3),
+                "actual_fps": round(
+                    self._published_frames / elapsed_seconds,
+                    3,
+                ),
+                "final_sequence": self._sequence_number,
+            }
 
-            print("\n==========================================")
-
-            print(
-                f"CAMERA {self._camera_id} SUMMARY"
-            )
-
-            print("==========================================")
-
-            print(
-                f"Published frames: "
-                f"{self._published_frames}"
-            )
-
-            print(
-                f"Kafka messages queued: "
-                f"{self._queued_messages}"
-            )
-
-            print(
-                f"Run elapsed seconds: "
-                f"{elapsed_seconds:.3f}"
-            )
-
+            print("\n==========================================", flush=True)
+            print(f"CAMERA {self._camera_id} SUMMARY", flush=True)
+            print("==========================================", flush=True)
+            print(f"Published frames: {self._published_frames}", flush=True)
+            print(f"Kafka messages queued: {self._queued_messages}", flush=True)
+            print(f"Run elapsed seconds: {elapsed_seconds:.3f}", flush=True)
             print(
                 f"Actual camera FPS: "
-                f"{self._published_frames / elapsed_seconds:.3f}"
+                f"{self._published_frames / elapsed_seconds:.3f}",
+                flush=True,
             )
-
+            print(f"Final sequence: {self._sequence_number}", flush=True)
             print(
-                f"Final sequence: "
-                f"{self._sequence_number}"
+                "[LOAD_TEST_CAMERA_METRICS] "
+                + json.dumps(summary, sort_keys=True),
+                flush=True,
             )
+            print("==========================================", flush=True)
 
-            print("==========================================")
+            # Flush outstanding Kafka messages after preserving the metrics.
+            try:
+                self._producer.flush(timeout=30.0)
+            except Exception as error:
+                print(
+                    f"[CAMERA FLUSH ERROR] Camera={self._camera_id}, "
+                    f"Error={error}",
+                    flush=True,
+                )
+                raise
