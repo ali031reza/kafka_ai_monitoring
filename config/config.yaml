@@ -1,15 +1,6 @@
-# ==========================================
-# AI MONITORING - APPLICATION CONFIGURATION
-# ==========================================
-
 app:
   name: kafka-ai-monitoring
   environment: development
-
-
-# ==========================================
-# POSTGRESQL DATABASE
-# ==========================================
 
 database:
   host: 127.0.0.1
@@ -17,170 +8,96 @@ database:
   name: ai_monitoring
   user: ai_app
 
-  # Password is loaded from:
-  # infra/postgres/.env
-
-
-# ==========================================
-# KAFKA CONFIGURATION
-# ==========================================
-
 kafka:
-
   bootstrap_servers:
     - 127.0.0.1:9092
-
   replication_factor: 1
-
-  # ----------------------------------------
-  # MESSAGE RETENTION
-  # ----------------------------------------
-
   retention:
-    frames_ms: 600000         # 10 minutes
-    results_ms: 86400000      # 24 hours
-
-  # ----------------------------------------
-  # PRODUCER CONFIGURATION
-  # ----------------------------------------
-
+    frames_ms: 600000
+    results_ms: 86400000
   producer:
     acks: all
     enable_idempotence: true
-
     compression_type: lz4
     batch_size: 262144
     linger_ms: 5
-
     delivery_timeout_ms: 120000
-
-  # ----------------------------------------
-  # CONSUMER CONFIGURATION
-  # ----------------------------------------
-
   consumer:
     enable_auto_commit: false
     offset_reset: earliest
-
   results_consumer:
     group_id: results_processor_group
     offset_reset: latest
-  # ----------------------------------------
-  # RETRY CONFIGURATION
-  # ----------------------------------------
-
   retry:
     max_retries: 2
     delay_ms: 200
-
-  # ----------------------------------------
-  # DEAD LETTER TOPIC
-  # ----------------------------------------
-
   dead_letter:
     topic: ai_monitoring.dead_letter
     partitions: 4
-    retention_ms: 604800000   # 7 days
-
-  # ----------------------------------------
-  # AI MODEL TOPICS
-  # ----------------------------------------
-
+    retention_ms: 604800000
   topics:
-
-    # Model 1: Car Detection
-    # 7 cameras - 84 FPS
     car:
       frames: model_1.frames
       results: model_1.results
-      partitions: 4
+      partitions: 16
+      results_partitions: 4
       group_id: model_1_group
       max_frame_age_ms: 5000
-
-    # Model 2: Fire Detection
-    # 12 cameras - 144 FPS
+      inference_delay_ms: 30
+      detection_probability: 0.50
     fire:
       frames: model_2.frames
       results: model_2.results
-      partitions: 4
+      partitions: 16
+      results_partitions: 4
       group_id: model_2_group
       max_frame_age_ms: 5000
-
-    # Model 3: Person / Face Detection
-    # 20 cameras - 240 FPS
+      inference_delay_ms: 30
+      detection_probability: 0.50
     person_face:
       frames: model_3.frames
       results: model_3.results
-      partitions: 4
+      partitions: 16
+      results_partitions: 4
       group_id: model_3_group
       max_frame_age_ms: 5000
-
-    # Model 4: PPE Detection
-    # 17 cameras - 204 FPS
+      inference_delay_ms: 30
+      detection_probability: 0.50
     ppe:
       frames: model_4.frames
       results: model_4.results
-      partitions: 4
+      partitions: 16
+      results_partitions: 4
       group_id: model_4_group
       max_frame_age_ms: 5000
+      inference_delay_ms: 30
+      detection_probability: 0.50
 
-
-# ==========================================
-# AI WORKER CONFIGURATION
-# ==========================================
-
+# Initial development replica counts; validate against measured hardware capacity.
 workers:
-
-  car: 1
-  fire: 1
-  person_face: 1
-  ppe: 1
-
-
-# ==========================================
-# CAMERA CONFIGURATION
-# ==========================================
+  car: 4
+  fire: 7
+  person_face: 11
+  ppe: 9
 
 cameras:
-
   total: 40
-
   fps: 12
-
   resolution:
     width: 1920
     height: 1080
-
   encoding: jpeg
-
   jpeg_quality: 80
 
-
-# ==========================================
-# FRAME ROUTING
-# ==========================================
-
 routing:
-
   source: database
-
   cache:
     enabled: true
-
-    # Planned for a future implementation.
     refresh_interval_seconds: 30
 
-# ==========================================
-# EVENT IMAGE STORAGE
-# ==========================================
-
 storage:
-
   event_images:
     enabled: true
-
     root_dir: data/event_images
-
     format: jpeg
-
     save_policy: events_only

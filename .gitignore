@@ -44,3 +44,14 @@ infra/postgres/pgdata/
 # ==========================================
 .DS_Store
 Thumbs.db
+# Generated event images
+data/event_images/
+
+# Local camera video samples
+Camera_sample/*.mp4
+
+# Local installation backups
+backup_phase_A_to_E_*/
+
+# Runtime logs
+*.log
