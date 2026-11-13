@@ -4,6 +4,7 @@ import csv
 import json
 import math
 import re
+import statistics
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -432,7 +433,7 @@ def main():
         for item in camera_summaries.values()
         if item.get("elapsed_seconds", 0) > 0
     ]
-    camera_window = _percentile(camera_durations, 50)
+    camera_window = statistics.median(camera_durations) if camera_durations else None
     test_window = camera_window or max(lag_window, resource_window)
     if test_window <= 0:
         test_window = None
