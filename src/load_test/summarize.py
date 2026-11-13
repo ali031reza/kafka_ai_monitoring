@@ -179,14 +179,18 @@ def _parse_camera_log(path, config):
     summary_pattern = re.compile(
         r"CAMERA\s+([A-Za-z0-9_-]+)\s+SUMMARY.*?"
         r"Published frames:\s*(\d+).*?"
-        r"Kafka messages queued:\s*(\d+)",
+        r"Kafka messages queued:\s*(\d+).*?"
+        r"Run elapsed seconds:\s*([0-9.]+).*?"
+        r"Actual camera FPS:\s*([0-9.]+)",
         re.DOTALL,
     )
     for match in summary_pattern.finditer(text):
-        camera_id, frames, queued = match.groups()
+        camera_id, frames, queued, elapsed, actual_fps = match.groups()
         result["camera_summaries"][camera_id] = {
             "published_frames": int(frames),
             "queued_messages": int(queued),
+            "elapsed_seconds": float(elapsed),
+            "actual_fps": float(actual_fps),
         }
 
     for match in re.finditer(
@@ -422,11 +426,17 @@ def main():
 
     lag_window = _time_span_seconds(lag_rows)
     resource_window = _time_span_seconds(resource_rows)
-    test_window = max(lag_window, resource_window)
+    camera_summaries = camera["camera_summaries"]
+    camera_durations = [
+        item["elapsed_seconds"]
+        for item in camera_summaries.values()
+        if item.get("elapsed_seconds", 0) > 0
+    ]
+    camera_window = _percentile(camera_durations, 50)
+    test_window = camera_window or max(lag_window, resource_window)
     if test_window <= 0:
         test_window = None
 
-    camera_summaries = camera["camera_summaries"]
     total_camera_frames = sum(
         item["published_frames"] for item in camera_summaries.values()
     )
@@ -490,8 +500,10 @@ def main():
         f"- Requested FPS per camera: **{_format(camera.get('target_fps_per_camera'), 2)}**",
         f"- Camera frames published: **{total_camera_frames}**",
         f"- Kafka model-topic messages queued: **{total_routed_messages}**",
-        f"- Estimated source FPS over monitoring window: **{_format(camera_observed_fps)}**",
-        f"- Estimated routed messages/sec over monitoring window: **{_format(routed_observed_fps)}**",
+        f"- Measured camera run window (median camera duration): **{_format(camera_window, 1, ' s')}**",
+        f"- Estimated source FPS over camera run: **{_format(camera_observed_fps)}**",
+        f"- Estimated routed messages/sec over camera run: **{_format(routed_observed_fps)}**",
+        f"- Per-camera actual FPS range: **{_format(min((item['actual_fps'] for item in camera_summaries.values()), default=None))} - {_format(max((item['actual_fps'] for item in camera_summaries.values()), default=None))}**",
         f"- Lag monitoring window: **{_format(lag_window, 1, ' s')}**",
         f"- Resource monitoring window: **{_format(resource_window, 1, ' s')}**",
         "",
@@ -757,6 +769,15 @@ def main():
         warnings.append(
             "At least one camera source video had a native FPS below the requested output FPS."
         )
+    if camera.get("target_fps_per_camera") and camera_summaries:
+        median_camera_fps = _percentile(
+            [item["actual_fps"] for item in camera_summaries.values()],
+            50,
+        )
+        if median_camera_fps is not None and median_camera_fps < camera["target_fps_per_camera"] * 0.95:
+            warnings.append(
+                f"Median camera output was {median_camera_fps:.2f} FPS, below 95% of the requested {camera['target_fps_per_camera']:.2f} FPS."
+            )
 
     lines.extend([
         "",
@@ -788,6 +809,7 @@ def main():
     _write_json(output_dir / "resource_summary.json", resource_summary)
     _write_json(output_dir / "camera_summary.json", {
         "test_window_seconds": test_window,
+        "camera_window_seconds": camera_window,
         "selected_camera_count": camera.get("selected_camera_count"),
         "camera_summaries": camera_summaries,
         "camera_routes": camera["camera_routes"],
