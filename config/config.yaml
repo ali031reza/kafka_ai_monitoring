@@ -73,12 +73,12 @@ kafka:
       inference_delay_ms: 30
       detection_probability: 0.50
 
-# Initial development replica counts; validate against measured hardware capacity.
+# Load-test branch target replica counts: ceil(input FPS / 20 FPS).
 workers:
-  car: 4
-  fire: 7
-  person_face: 11
-  ppe: 9
+  car: 5
+  fire: 8
+  person_face: 12
+  ppe: 11
 
 cameras:
   total: 40

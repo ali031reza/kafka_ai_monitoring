@@ -1,3 +1,5 @@
+import json
+import os
 import time
 
 import cv2
@@ -20,6 +22,14 @@ from src.storage.event_image_storage import EventImageStorage
 
 class AIWorker:
     """Consumes frames, decodes JPEG, runs inference, and publishes results."""
+
+    _TIMED_STAGES = (
+        "deserialize",
+        "jpeg_decode",
+        "inference",
+        "event_image_save",
+        "result_publish",
+    )
 
     def __init__(
         self,
@@ -56,6 +66,65 @@ class AIWorker:
         self._retry_delay_ms = retry_delay_ms
         self._progress_log_every = progress_log_every
         self._decoded_frames = 0
+        self._run_started_at = None
+        self._metrics = {
+            "handled": 0,
+            "processed": 0,
+            "skipped": 0,
+            "failed": 0,
+            "unhandled_errors": 0,
+            "total_message_ms": 0.0,
+        }
+        for stage in self._TIMED_STAGES:
+            self._metrics[f"{stage}_ms_total"] = 0.0
+            self._metrics[f"{stage}_count"] = 0
+
+    def _record_stage(self, stage: str, started_at: float) -> None:
+        self._metrics[f"{stage}_ms_total"] += (
+            time.perf_counter() - started_at
+        ) * 1000.0
+        self._metrics[f"{stage}_count"] += 1
+
+    def _metrics_snapshot(self) -> dict:
+        elapsed = max(
+            time.perf_counter() - self._run_started_at,
+            1e-9,
+        )
+        snapshot = {
+            "model": self._model_id,
+            "pid": os.getpid(),
+            "elapsed_seconds": round(elapsed, 3),
+            "handled": self._metrics["handled"],
+            "processed": self._metrics["processed"],
+            "skipped": self._metrics["skipped"],
+            "failed": self._metrics["failed"],
+            "unhandled_errors": self._metrics["unhandled_errors"],
+            "decoded_frames": self._decoded_frames,
+            "handled_fps": round(self._metrics["handled"] / elapsed, 3),
+            "processed_fps": round(self._metrics["processed"] / elapsed, 3),
+            "total_message_avg_ms": round(
+                self._metrics["total_message_ms"]
+                / max(self._metrics["handled"], 1),
+                3,
+            ),
+        }
+        for stage in self._TIMED_STAGES:
+            count = self._metrics[f"{stage}_count"]
+            total = self._metrics[f"{stage}_ms_total"]
+            snapshot[f"{stage}_count"] = count
+            snapshot[f"{stage}_avg_ms"] = round(
+                total / count if count else 0.0,
+                3,
+            )
+            snapshot[f"{stage}_ms_total"] = round(total, 3)
+        return snapshot
+
+    def _log_metrics(self) -> None:
+        print(
+            "[LOAD_TEST_WORKER_METRICS] "
+            + json.dumps(self._metrics_snapshot(), sort_keys=True),
+            flush=True,
+        )
 
     def _validate_frame(self, frame: CameraFrame) -> None:
         if not frame.camera_id or len(frame.camera_id) > 50:
@@ -173,9 +242,25 @@ class AIWorker:
             return None
 
     def _handle_message(self, message) -> str:
+        started_at = time.perf_counter()
+        try:
+            outcome = self._handle_message_impl(message)
+            self._metrics[outcome] += 1
+            return outcome
+        except Exception:
+            self._metrics["unhandled_errors"] += 1
+            raise
+        finally:
+            self._metrics["handled"] += 1
+            self._metrics["total_message_ms"] += (
+                time.perf_counter() - started_at
+            ) * 1000.0
+
+    def _handle_message_impl(self, message) -> str:
         frame = None
 
         # 1. Deserialize and validate metadata.
+        stage_started = time.perf_counter()
         try:
             frame = self._serializer.deserialize(message.value())
             self._validate_frame(frame)
@@ -183,6 +268,8 @@ class AIWorker:
             return self._publish_failure(
                 message, error, frame, attempts=1
             )
+        finally:
+            self._record_stage("deserialize", stage_started)
 
         # 2. Reject stale frames before spending CPU on JPEG decoding.
         freshness = self._check_freshness(message, frame)
@@ -194,12 +281,15 @@ class AIWorker:
             return "skipped"
 
         # 3. Decode once and reuse the image for inference retries.
+        stage_started = time.perf_counter()
         try:
             image = self._decode_jpeg(frame)
         except ValueError as error:
             return self._publish_failure(
                 message, error, frame, attempts=1
             )
+        finally:
+            self._record_stage("jpeg_decode", stage_started)
 
         # 4. Run inference, retrying temporary failures.
         result = None
@@ -213,29 +303,53 @@ class AIWorker:
                 self._consumer.commit(message)
                 return "skipped"
 
+            stage_started = time.perf_counter()
             try:
                 result = self._model.predict(frame, image)
-                self._validate_result(frame, result)
-                self._store_event_image(frame, result)
-                break
             except Exception as error:
                 if attempt > self._max_retries:
                     return self._publish_failure(
                         message, error, frame, attempts=attempt
                     )
                 time.sleep(self._retry_delay_ms / 1000.0)
+            finally:
+                self._record_stage("inference", stage_started)
+
+            if result is not None:
+                try:
+                    self._validate_result(frame, result)
+                    image_started = time.perf_counter()
+                    self._store_event_image(frame, result)
+                    if result.is_event:
+                        self._record_stage(
+                            "event_image_save",
+                            image_started,
+                        )
+                    break
+                except Exception as error:
+                    if attempt > self._max_retries:
+                        return self._publish_failure(
+                            message, error, frame, attempts=attempt
+                        )
+                    time.sleep(self._retry_delay_ms / 1000.0)
+                    result = None
 
         if result is None:
             raise RuntimeError("Inference completed without a result")
 
         # 5. Confirm result delivery before committing the source message.
-        self._producer.publish(self._result_topic, result)
+        publish_started = time.perf_counter()
+        try:
+            self._producer.publish(self._result_topic, result)
+        finally:
+            self._record_stage("result_publish", publish_started)
+
         self._consumer.commit(message)
         return "processed"
 
     def run(self, max_messages: int | None = None, stop_event=None) -> None:
-        counters = {"processed": 0, "skipped": 0, "failed": 0}
         handled = 0
+        self._run_started_at = time.perf_counter()
 
         print(
             f"[AI WORKER STARTED] model={self._model_id}; "
@@ -253,21 +367,19 @@ class AIWorker:
                     continue
 
                 outcome = self._handle_message(message)
-                counters[outcome] += 1
                 handled += 1
 
                 if handled % self._progress_log_every == 0:
-                    print(
-                        f"[WORKER PROGRESS] model={self._model_id}, "
-                        f"handled={handled}, processed={counters['processed']}, "
-                        f"skipped={counters['skipped']}, failed={counters['failed']}, "
-                        f"jpeg_decoded={self._decoded_frames}"
-                    )
+                    self._log_metrics()
         finally:
-            self._consumer.close()
-            print(
-                f"[AI WORKER STOPPED] model={self._model_id}, "
-                f"processed={counters['processed']}, "
-                f"skipped={counters['skipped']}, failed={counters['failed']}, "
-                f"jpeg_decoded={self._decoded_frames}"
-            )
+            try:
+                self._consumer.close()
+            finally:
+                self._log_metrics()
+                print(
+                    f"[AI WORKER STOPPED] model={self._model_id}, "
+                    f"processed={self._metrics['processed']}, "
+                    f"skipped={self._metrics['skipped']}, "
+                    f"failed={self._metrics['failed']}, "
+                    f"jpeg_decoded={self._decoded_frames}"
+                )

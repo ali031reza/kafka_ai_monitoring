@@ -18,6 +18,9 @@ data/event_images/
 infra/postgres/data/
 infra/postgres/pgdata/
 
+# Local load-test reports and logs
+artifacts/load_test/
+
 # Local camera sample videos and runtime files
 Camera_sample/*.mp4
 *.log
