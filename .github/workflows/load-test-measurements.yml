@@ -1,0 +1,35 @@
+name: Load-test measurement checks
+
+on:
+  push:
+    branches:
+      - load-test
+  pull_request:
+    branches:
+      - load-test
+
+jobs:
+  measurement-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install measurement dependencies
+        run: python -m pip install -r requirements-load-test.txt
+
+      - name: Compile changed measurement modules
+        run: |
+          python -m py_compile \
+            src/load_test/resource_monitor.py \
+            src/load_test/summarize.py \
+            src/workers/ai_worker.py \
+            src/ingestion/camera_simulator.py
+
+      - name: Run measurement regression tests
+        run: python -m unittest discover -s tests -v
