@@ -329,6 +329,19 @@ def _summarize_docker(rows):
     return result
 
 
+def _model_offered_fps(camera_summaries, camera_ids, camera_window):
+    """Return measured offered FPS only when every assigned camera is measured."""
+    if not camera_ids or not camera_window:
+        return None
+    if any(camera_id not in camera_summaries for camera_id in camera_ids):
+        return None
+    published_frames = sum(
+        camera_summaries[camera_id].get("published_frames", 0)
+        for camera_id in camera_ids
+    )
+    return published_frames / camera_window
+
+
 def _weighted_stage_average(items, stage):
     count = sum(_safe_int(item.get(f"{stage}_count"), 0) for item in items)
     total = sum(_safe_float(item.get(f"{stage}_ms_total")) or 0.0 for item in items)
@@ -428,12 +441,28 @@ def main():
     lag_window = _time_span_seconds(lag_rows)
     resource_window = _time_span_seconds(resource_rows)
     camera_summaries = camera["camera_summaries"]
+    expected_camera_ids = set(camera["camera_routes"])
+    summaries_complete = (
+        bool(camera_summaries)
+        and expected_camera_ids.issubset(camera_summaries)
+        and (
+            camera.get("selected_camera_count") is None
+            or len(camera_summaries) >= camera["selected_camera_count"]
+        )
+    )
     camera_durations = [
-        item["elapsed_seconds"]
-        for item in camera_summaries.values()
-        if item.get("elapsed_seconds", 0) > 0
+        camera_summaries[camera_id]["elapsed_seconds"]
+        for camera_id in expected_camera_ids
+        if (
+            summaries_complete
+            and camera_summaries[camera_id].get("elapsed_seconds", 0) > 0
+        )
     ]
-    camera_window = statistics.median(camera_durations) if camera_durations else None
+    camera_window = (
+        statistics.median(camera_durations)
+        if summaries_complete and camera_durations
+        else None
+    )
     test_window = camera_window or max(lag_window, resource_window)
     if test_window <= 0:
         test_window = None
@@ -463,18 +492,15 @@ def main():
     for model in MODELS:
         camera_ids = model_camera_ids.get(model, [])
         model_assignment_counts[model] = len(camera_ids)
-        if test_window and camera_summaries and camera_ids:
-            model_frames = sum(
-                camera_summaries.get(camera_id, {}).get("published_frames", 0)
-                for camera_id in camera_ids
+        model_offered_fps[model] = (
+            _model_offered_fps(
+                camera_summaries,
+                camera_ids,
+                camera_window,
             )
-            model_offered_fps[model] = model_frames / test_window
-        elif camera.get("target_fps_per_camera") is not None and camera_ids:
-            model_offered_fps[model] = (
-                len(camera_ids) * camera["target_fps_per_camera"]
-            )
-        else:
-            model_offered_fps[model] = None
+            if summaries_complete
+            else None
+        )
 
     worker_groups = defaultdict(list)
     for item in workers.values():
@@ -508,7 +534,7 @@ def main():
         f"- Lag monitoring window: **{_format(lag_window, 1, ' s')}**",
         f"- Resource monitoring window: **{_format(resource_window, 1, ' s')}**",
         "",
-        "Per-model offered load is derived from the camera-to-topic routes printed by the simulator at startup and the per-camera published-frame totals. It is not inferred from historical inference-result counts.",
+        "Per-model offered load is derived from the camera-to-topic routes printed by the simulator at startup and per-camera published-frame totals. It is not inferred from historical inference-result counts. Offered FPS is withheld unless final summaries are present for every selected camera.",
         "",
         "| Model | Active camera assignments | Measured offered FPS | Configured workers | Observed worker processes |",
         "|---|---:|---:|---:|---:|",
