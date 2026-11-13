@@ -499,7 +499,8 @@ class VideoCameraSimulator:
             f"Target FPS={self._output_fps:.2f}"
         )
 
-        next_publish_at = time.monotonic()
+        run_started_at = time.monotonic()
+        next_publish_at = run_started_at
 
         queued_since_flush = 0
 
@@ -577,6 +578,11 @@ class VideoCameraSimulator:
 
         finally:
 
+            elapsed_seconds = max(
+                time.monotonic() - run_started_at,
+                1e-9,
+            )
+
             # ======================================
             # 13. CLEANUP
             # ======================================
@@ -609,6 +615,16 @@ class VideoCameraSimulator:
             print(
                 f"Kafka messages queued: "
                 f"{self._queued_messages}"
+            )
+
+            print(
+                f"Run elapsed seconds: "
+                f"{elapsed_seconds:.3f}"
+            )
+
+            print(
+                f"Actual camera FPS: "
+                f"{self._published_frames / elapsed_seconds:.3f}"
             )
 
             print(
