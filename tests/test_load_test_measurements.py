@@ -9,6 +9,7 @@ from src.load_test.resource_monitor import (
     _process_group_stats,
 )
 from src.load_test.summarize import (
+    _model_offered_fps,
     _read_text_auto,
     _summarize_lag,
 )
@@ -111,6 +112,21 @@ Actual camera FPS: 8.000
         self.assertEqual(result["camera_summaries"]["C01"]["queued_messages"], 9600)
         self.assertEqual(result["camera_summaries"]["C01"]["elapsed_seconds"], 600.0)
         self.assertEqual(result["camera_summaries"]["C01"]["actual_fps"], 8.0)
+
+    def test_offered_fps_requires_every_camera_summary(self):
+        summaries = {
+            "C01": {"published_frames": 4800},
+        }
+        self.assertIsNone(
+            _model_offered_fps(summaries, ["C01", "C02"], 600.0)
+        )
+        self.assertAlmostEqual(
+            _model_offered_fps(summaries, ["C01"], 600.0),
+            8.0,
+        )
+        self.assertIsNone(
+            _model_offered_fps(summaries, ["C01"], None)
+        )
 
     def test_lag_summary_tracks_first_last_and_unknown(self):
         rows = [
