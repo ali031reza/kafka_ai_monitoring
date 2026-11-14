@@ -26,6 +26,12 @@ Camera_sample/*.mp4
 *.log
 backup_phase_A_to_E_*/
 
+# DeepStream model weights and generated TensorRT engines are provisioned
+# separately and must not be committed to the repository.
+deepstream/models/**
+!deepstream/models/README.md
+deepstream/cache/
+
 # IDE and operating system files
 .vscode/
 .idea/

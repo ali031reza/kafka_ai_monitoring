@@ -1,0 +1,41 @@
+deepstream:
+  runtime:
+    api: pyservicemaker
+    log_level: INFO
+
+  sources:
+    # Start with local MP4 files. PostgreSQL-backed RTSP sources are added
+    # in the later database-integration phase.
+    mode: files
+    max_frame_age_ms: 5000
+    files: []
+
+  # Worker counts are independent per model. These are initial placeholders,
+  # not measured capacity recommendations. Models remain disabled until a
+  # real model engine and a compatible DeepStream runtime are available.
+  models:
+    car:
+      enabled: false
+      workers: 1
+      engine_path: null
+      batch_size: 1
+    fire:
+      enabled: false
+      workers: 1
+      engine_path: null
+      batch_size: 1
+    person_face:
+      enabled: false
+      workers: 1
+      engine_path: null
+      batch_size: 1
+    ppe:
+      enabled: false
+      workers: 1
+      engine_path: null
+      batch_size: 1
+
+  results:
+    # Phase 2 writes local metadata/metrics only. Kafka result publishing is
+    # enabled after the metadata and Protobuf adapter are validated.
+    publish_to_kafka: false
